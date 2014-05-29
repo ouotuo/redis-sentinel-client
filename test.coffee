@@ -1,12 +1,13 @@
 RedisSentinelClient = require "./redis-sentinel-client"
 options=
     clients:[
-        {role:"master",name:"mymaster"}
+        {role:"master",name:"mymaster"},
+        {role:"slave",name:"mymaster"}
     ]
     sentinels:[
-        {host:"10.2.124.205",port:"26379"},
-        {host:"10.2.124.204",port:"26389"},
-        {host:"10.2.124.206",port:"26379"}
+        {host:"10.2.126.53",port:"26379"},
+        {host:"10.2.126.53",port:"26389"},
+        {host:"10.2.126.53",port:"26399"}
     ]
     logger:console
     talkSentinelPingTime:2000
@@ -21,6 +22,7 @@ process.on 'uncaughtException', (err)->
     console.error(err.stack)
     process.exit(1)
 
+console.log options
 client=new RedisSentinelClient.createClient options
 c=client.getClient "mymaster"
 ping=(err)->
@@ -38,7 +40,7 @@ c.on "firstconnect",()->
         if err
             console.error err
         else
-            console.log ret
+            console.log "lua success"
 
 c.on "connecting",()->
     console.log "connecting---------------"
@@ -50,6 +52,14 @@ c.on "connect",()->
 
 
 ping()
+s=client.getClient "mymaster","slave"
+s.subscribe "a"
+s.on "message",(msg)->
+    console.log "message:#{msg}"
+
+
+
+
 
 
 ###

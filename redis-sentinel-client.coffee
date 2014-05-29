@@ -50,6 +50,8 @@ class Client extends events.EventEmitter
         @timeoutClock=null
         @pingClock=null
         @firstConnect=true
+        #订阅的集合
+        @subSet=[]
 
     disconnect:()=>
         if @client
@@ -61,9 +63,11 @@ class Client extends events.EventEmitter
         @host=null
         @port=null
         @status="disconnect"
+        ###
         if @pingClock
             clearInterval @pingClock
             @pingClock=null
+        ###
 
     getStatus:()=>
         return @status
@@ -100,7 +104,6 @@ class Client extends events.EventEmitter
         @client.on "end",@onClientEnd.bind(@)
         @client.on "reconnecting",@onClientReconnecting.bind(@)
         @errorTimes=0
-
         client=@client
         self=@
         #ignore error 'connect',
@@ -120,6 +123,7 @@ class Client extends events.EventEmitter
         else
             @emit "reconnect",@id
 
+        ###
         if not @pingClock
             self=@
             pingFun=()->
@@ -127,15 +131,22 @@ class Client extends events.EventEmitter
                     if err
                         self.logger.error "client #{self.id} ping #{self.host}:#{self.port} error:#{err}"
             @pingClock=setInterval pingFun,@options.pingTime
+        ###
+
+        #reset sub
+        for sub in @subSet
+            @client[sub.action].call @client,sub.topic
         
     onClientEnd:()=>
         @status="disconnect"
         @logger.info "#{@id} disconnect #{@host}:#{@port}"
         @errorTimes=0
 
+        ###
         if @pingClock
             clearInterval @pingClock
             @pingClock=null
+        ###
         @emit "end"
 
     onClientReconnecting:()=>
@@ -169,15 +180,40 @@ commands.forEach (command)->
             cb=arguments[len-1]
             if typeof cb=="function"
                 cb "client is not connected,#{@status}"
+            return
             
         fn=@client[command]
         fn.apply @client,arguments
-        ###
-        if Array.isArray(args) and typeof callback == "function"
-            return @client.send_command(command, args, callback)
-        else
-            return @client.send_command(command, to_array(arguments))
-        ###
+Client.prototype._sub=(action,topic)->
+    for sub in @subSet
+        if sub.action==action and sub.topic=topic
+            return
+    #add
+    @subSet.push {action:action,topic:topic}
+Client.prototype._unsub=(action,topic)->
+    i=0
+    for sub in @subSet
+        if sub.action==action and sub.topic=topic
+            @subSet.splice i,1
+            if @status=="connected"
+                if action=='subscribe'
+                    @client.unsubscribe topic
+                else if action=='subscribe'
+                    @client.punsubscribe topic
+            return
+        i++
+
+Client.prototype['subscribe']=(topic)->
+    @_sub 'subscribe',topic
+Client.prototype['psubscribe']=(topic)->
+    @_sub 'psubscribe',topic
+Client.prototype['unsubscribe']=(topic)->
+    @_unsub 'subscribe',topic
+Client.prototype['unpsubscribe']=(topic)->
+    @_unsub 'psubscribe',topic
+
+
+
 
 ###
 {
@@ -420,6 +456,7 @@ class RedisSentinelClient extends events.EventEmitter
             return
 
         self=@
+        isReconnectSentinel=false
         clients.forEach (client)->
             masterName=client.getName()
             role=client.getRole()
@@ -457,10 +494,13 @@ class RedisSentinelClient extends events.EventEmitter
                                                 findSentinel=true
                                                 break
                                         if findSentinel==false
-                                            logger.error "sentinel for #{masterName} no partner sentinel is ok,reconnect sentinel"
-                                            fun=()->
-                                                self.emit "change sentinel"
-                                            #setTimeout fun,self.noMasterPartnerSentinelReconnectTime
+                                            logger.error "sentinel for #{masterName} no partner sentinel is ok"
+
+                                            if isReconnectSentinel==false
+                                                isReconnectSentinel=true
+                                                fun=()->
+                                                    self.emit "change sentinel"
+                                                setTimeout fun,self.noMasterPartnerSentinelReconnectTime
                         catch e
                             logger.error "unable get master for #{masterName},reply=#{arr},err=#{e},#{e.stack}"
             else if role=="slave"
