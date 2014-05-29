@@ -1,9 +1,4 @@
-redis-sentinel-client
-=====================
-
-redis-sentinel-client
-
-
+RedisSentinelClient = require "./redis-sentinel-client"
 options=
     clients:[
         {role:"master",name:"mymaster"}
@@ -55,3 +50,9 @@ c.on "connect",()->
 
 
 ping()
+
+
+###
+sortedSetFindAndRemLua="local arr=redis.call('zrevrangebyscore',KEYS[1],ARGV[2],ARGV[1],'WITHSCORES');redis.call('zremrangebyscore',KEYS[1],ARGV[1],ARGV[2]);return arr;"
+###
+

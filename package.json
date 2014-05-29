@@ -1,0 +1,23 @@
+{
+  "name": "redis-sentinel-cluster-client",
+  "version": "0.0.1",
+  "description": "Redis sentinel client library",
+  "keywords": [
+    "redis",
+    "sentinel",
+    "database"
+  ],
+  "author": "ouotuo<ouotuo@gmail.com>",
+  "main": "./index.js",
+  "scripts": {
+  },
+  "dependencies": {
+    "gf-redis": "~0.10.3"
+  },
+  "devDependencies": {
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/ouotuo/redis-sentinel-client.git"
+  }
+}
