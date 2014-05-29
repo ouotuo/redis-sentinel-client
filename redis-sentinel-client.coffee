@@ -184,21 +184,27 @@ commands.forEach (command)->
             
         fn=@client[command]
         fn.apply @client,arguments
+
 Client.prototype._sub=(action,topic)->
+    @logger.info "sub #{action} #{topic}"
     for sub in @subSet
-        if sub.action==action and sub.topic=topic
+        if sub.action==action and sub.topic==topic
             return
     #add
     @subSet.push {action:action,topic:topic}
+    if @status=="connected"
+        @client[action].call @client,topic
+
 Client.prototype._unsub=(action,topic)->
+    @logger.info "unsub #{action} #{topic}"
     i=0
     for sub in @subSet
-        if sub.action==action and sub.topic=topic
+        if sub.action==action and sub.topic==topic
             @subSet.splice i,1
             if @status=="connected"
                 if action=='subscribe'
                     @client.unsubscribe topic
-                else if action=='subscribe'
+                else if action=='psubscribe'
                     @client.punsubscribe topic
             return
         i++

@@ -22,7 +22,6 @@ process.on 'uncaughtException', (err)->
     console.error(err.stack)
     process.exit(1)
 
-console.log options
 client=new RedisSentinelClient.createClient options
 c=client.getClient "mymaster"
 ping=(err)->
@@ -54,6 +53,8 @@ c.on "connect",()->
 ping()
 s=client.getClient "mymaster","slave"
 s.subscribe "a"
+s.subscribe "b"
+s.unsubscribe "b"
 s.on "message",(msg)->
     console.log "message:#{msg}"
 
