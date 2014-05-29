@@ -185,40 +185,51 @@ commands.forEach (command)->
         fn=@client[command]
         fn.apply @client,arguments
 
-Client.prototype._sub=(action,topic)->
-    @logger.info "sub #{action} #{topic}"
-    for sub in @subSet
-        if sub.action==action and sub.topic==topic
-            return
-    #add
-    @subSet.push {action:action,topic:topic}
+Client.prototype._sub=(action,unaction,topics)->
+    @logger.info "sub action=#{action},unaction=#{unaction},topics=#{topics}"
+    if topics==null or topics.length==0 then return
+    addTopics=[]
+    for topic in topics
+        find=false
+        for sub in @subSet
+            if sub.action==action and sub.topic==topic
+                find=true
+                break
+        if not find
+            #add topic
+            @subSet.push {action:action,unaction:unaction,topic:topic}
+            addTopics.push topic
     if @status=="connected"
-        @client[action].call @client,topic
+        @client[action].apply @client,addTopics
 
-Client.prototype._unsub=(action,topic)->
-    @logger.info "unsub #{action} #{topic}"
-    i=0
-    for sub in @subSet
-        if sub.action==action and sub.topic==topic
-            @subSet.splice i,1
-            if @status=="connected"
-                if action=='subscribe'
-                    @client.unsubscribe topic
-                else if action=='psubscribe'
-                    @client.punsubscribe topic
-            return
-        i++
+Client.prototype._unsub=(action,topics)->
+    @logger.info "unsub action=#{action},topics=#{topics}"
+    if topics==null or topics.length==0 then return
+    delTopics=[]
+    for topic in topics
+        i=0
+        for sub in @subSet
+            if sub.unaction==action and sub.topic==topic
+                @subSet.splice i,1
+                delTopics.push topic
+                break
+            i++
+    if @status=="connected"
+        @client[action].apply @client,delTopics
 
 Client.prototype['subscribe']=(topic)->
-    @_sub 'subscribe',topic
+    args=to_array(arguments)
+    @_sub 'subscribe','unsubscribe',args
 Client.prototype['psubscribe']=(topic)->
-    @_sub 'psubscribe',topic
+    args=to_array(arguments)
+    @_sub 'psubscribe','punsubscribe',args
+
 Client.prototype['unsubscribe']=(topic)->
-    @_unsub 'subscribe',topic
-Client.prototype['unpsubscribe']=(topic)->
-    @_unsub 'psubscribe',topic
-
-
+    args=to_array(arguments)
+    @_unsub 'unsubscribe',args
+Client.prototype['punsubscribe']=(topic)->
+    args=to_array(arguments)
+    @_unsub 'punsubscribe',args
 
 
 ###

@@ -52,11 +52,15 @@ c.on "connect",()->
 
 ping()
 s=client.getClient "mymaster","slave"
-s.subscribe "a"
+s.subscribe "a","c","d"
 s.subscribe "b"
-s.unsubscribe "b"
-s.on "message",(msg)->
-    console.log "message:#{msg}"
+s.unsubscribe "b","d"
+s.psubscribe "b*f"
+s.on "message",(channel,msg)->
+    console.log "message:#{channel},#{msg}"
+s.on "pmessage",(channel,msg)->
+    console.log "pmessage:#{channel},#{msg}"
+
 
 
 
