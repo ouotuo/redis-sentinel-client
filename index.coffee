@@ -297,7 +297,7 @@ class RedisSentinelClient extends events.EventEmitter
             arr.push {host:s.host,port:s.port}
         @sentinels.setData arr
 
-        @reconnectSentinel()
+        @reconnectSentinel(false)
 
         @on('subSentinel disconnected', @reconnectSentinel.bind(@))
         @on('talkSentinel disconnected', @reconnectSentinel.bind(@))
@@ -319,7 +319,18 @@ class RedisSentinelClient extends events.EventEmitter
         if allReady
             @ready=true
             @emit "ready"
-    reconnectSentinel:()=>
+    reconnectSentinel:(wait=true)=>
+        #2s
+        self=@
+        time=2000
+        if not wait
+            time=500
+
+        fun=()->
+            self._reconnectSentinel()
+        setTimeout fun,time
+            
+    _reconnectSentinel:()=>
         @logger.info "reconnectSentinel"
         if @talkSentinel
             @talkSentinel.end()

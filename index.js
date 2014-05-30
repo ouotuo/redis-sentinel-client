@@ -413,6 +413,7 @@
       this.getClient = __bind(this.getClient, this);
       this._checkClientHostAndPort = __bind(this._checkClientHostAndPort, this);
       this._connectSentinel = __bind(this._connectSentinel, this);
+      this._reconnectSentinel = __bind(this._reconnectSentinel, this);
       this.reconnectSentinel = __bind(this.reconnectSentinel, this);
       this._checkReady = __bind(this._checkReady, this);
       var arr, c, cOptions, client, cs, id, s, _i, _j, _len, _len1, _ref, _ref1;
@@ -461,7 +462,7 @@
         });
       }
       this.sentinels.setData(arr);
-      this.reconnectSentinel();
+      this.reconnectSentinel(false);
       this.on('subSentinel disconnected', this.reconnectSentinel.bind(this));
       this.on('talkSentinel disconnected', this.reconnectSentinel.bind(this));
       this.on('change sentinel', this.reconnectSentinel.bind(this));
@@ -494,7 +495,23 @@
       }
     };
 
-    RedisSentinelClient.prototype.reconnectSentinel = function() {
+    RedisSentinelClient.prototype.reconnectSentinel = function(wait) {
+      var fun, self, time;
+      if (wait == null) {
+        wait = true;
+      }
+      self = this;
+      time = 2000;
+      if (!wait) {
+        time = 500;
+      }
+      fun = function() {
+        return self._reconnectSentinel();
+      };
+      return setTimeout(fun, time);
+    };
+
+    RedisSentinelClient.prototype._reconnectSentinel = function() {
       var sentinel;
       this.logger.info("reconnectSentinel");
       if (this.talkSentinel) {
