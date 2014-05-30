@@ -1,4 +1,4 @@
 node_modules
 *.coffee
-!redis-sentinel-client.js
+!index.js
 

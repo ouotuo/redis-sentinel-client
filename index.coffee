@@ -52,6 +52,7 @@ class Client extends events.EventEmitter
         @firstConnect=true
         #订阅的集合
         @subSet=[]
+        @ready=false
 
     disconnect:()=>
         if @client
@@ -99,27 +100,32 @@ class Client extends events.EventEmitter
         @client=new RedisSingleClient.createClient @port,@host,@options
         @status="connecting"
         @emit "connecting"
-        @client.on "connect",@onClientConnect.bind(@)
+        @client.on "ready",@onClientConnect.bind(@)
         @client.on "error",@onClientError.bind(@)
         @client.on "end",@onClientEnd.bind(@)
         @client.on "reconnecting",@onClientReconnecting.bind(@)
         @errorTimes=0
         client=@client
         self=@
-        #ignore error 'connect',
-        ['message', 'pmessage', 'unsubscribe', 'end', 'reconnecting',  'ready', 'subscribe'].forEach (evt)->
+        #ignore error 'connect','ready', 
+        ['message', 'pmessage', 'unsubscribe', 'end', 'reconnecting',  'subscribe'].forEach (evt)->
             client.on evt,()->
                 if self.client==client
                     self.emit.apply self,[evt].concat(Array.prototype.slice.call(arguments))
+
+    isConnected:()=>
+        return @status=="connected"
+    isReady:()=>
+        return @ready=="ready"
 
     onClientConnect:()=>
         @status="connected"
         @logger.info "#{@id} success connect #{@host}:#{@port}"
         @errorTimes=0
         @emit "connect",@id
-        if @firstConnect
-            @emit "firstconnect",@id
-            @firstConnect=false
+        if not @ready
+            @emit "ready",@id
+            @ready=true
         else
             @emit "reconnect",@id
 
@@ -256,18 +262,21 @@ class RedisSentinelClient extends events.EventEmitter
         @talkSentinelStatus="disconnect"
         @subSentinel=null
         @subSentinelStatus="disconnect"
+        @ready=false
         if options.master_debug
              RedisSingleClient.debug_mode = true
 
-        @talkSentinelPingTime=options.talkSentinelPingtime||2000
-        @checkClientTime=options.checkClientTime||20000
-        @noMasterPartnerSentinelReconnectTime=options.noMasterPartnerSentinelReconnectTime||3000
+        @talkSentinelPingTime=options.talkSentinelPingtime||5000
+        @checkClientTime=options.checkClientTime||30000
+        @noMasterPartnerSentinelReconnectTime=options.noMasterPartnerSentinelReconnectTime||10000
         #init client
         @clients={}
         cOptions=
             logger:@logger
-            pingTime:options.clientPingTime||2000
+            pingTime:options.clientPingTime||5000
             noSlaveReconnectTime:options.clientNoSlaveReconnectTime||3000
+            enable_offline_queue:false
+
         for c in options.clients
             client=new Client(c.name,c.role,cOptions)
             id=client.getId()
@@ -279,6 +288,7 @@ class RedisSentinelClient extends events.EventEmitter
             cs.push client
 
             client.on "reconnectClient",@_reconnectClient.bind(@)
+            client.on "ready",@_checkReady.bind(@)
 
         #init sentinels
         @sentinels=new RollArray()
@@ -298,6 +308,17 @@ class RedisSentinelClient extends events.EventEmitter
         @on('change slave', @_reconnectClient.bind(@))
         @on('check sentinel', @reconnectSentinel.bind(@))
 
+    _checkReady:()=>
+        if @ready then return
+        allReady=true
+        for cs in @clients
+            for c in cs
+                if not c.isReady()
+                    allReady=false
+                    break
+        if allReady
+            @ready=true
+            @emit "ready"
     reconnectSentinel:()=>
         @logger.info "reconnectSentinel"
         if @talkSentinel
@@ -320,9 +341,11 @@ class RedisSentinelClient extends events.EventEmitter
         logger.info "_connectSentinel #{host}:#{port}"
 
         logger.info "talkSentinel try to connect to sentinel #{host}:#{port}"
-        @talkSentinel = new RedisSingleClient.createClient(port, host)
+        cOptions=
+            enable_offline_queue:false
+        @talkSentinel = new RedisSingleClient.createClient(port, host,cOptions)
         @talkSentinelStatus="connecting"
-        @talkSentinel.on 'connect',()->
+        @talkSentinel.on 'ready',()->
             logger.info "talkSentinel success connect sentinel #{host}:#{port}"
             self.talkSentinelStatus="connected"
             self.emit 'talkSentinel connected',sentinel
@@ -356,12 +379,13 @@ class RedisSentinelClient extends events.EventEmitter
                 self.checkClientJobClock=null
 
         logger.info "subSentinel try to connect to sentinel #{host}:#{port}"
-        @subSentinel = new RedisSingleClient.createClient(port, host)
+        @subSentinel = new RedisSingleClient.createClient(port, host,cOptions)
         @subSentinelStatus="connecting"
-        @subSentinel.on 'connect',()->
+        @subSentinel.on 'ready',()->
             logger.info "subSentinel success connect sentinel #{host}:#{port}"
             self.subSentinelStatus="connected"
             self.emit 'subSentinel connected',sentinel
+            self.subSentinel.psubscribe "*"
             self._checkClientHostAndPort()
         @subSentinel.on 'error',(err)->
             logger.error "subSentinel error:#{err.message} at #{host}:#{port}"
@@ -371,7 +395,6 @@ class RedisSentinelClient extends events.EventEmitter
             self.subSentinelStatus="disconnect"
             self.emit 'subSentinel disconnected'
 
-        @subSentinel.psubscribe "*"
         @subSentinel.on "pmessage",(channel,msg,args)->
             logger.info "sentinel message:channel=#{channel},msg=#{msg},args=#{args}"
             self.emit "sentinel message",msg
@@ -411,10 +434,6 @@ class RedisSentinelClient extends events.EventEmitter
 
         #获取
     _checkClientHostAndPort:()=>
-        if not @firstCheckClientHostAndPort
-            @firstCheckClientHostAndPort=true
-            @emit "connect"
-
         logger=@logger
         logger.info "_checkClientHostAndPort,subSentinelStatus=#{@subSentinelStatus},talkSentinelStatus=#{@talkSentinelStatus}"
         if @subSentinelStatus!="connected"
@@ -433,19 +452,20 @@ class RedisSentinelClient extends events.EventEmitter
             return
         if @talkSentinelStatus!="connected"
             return
+        if not @ready
+            @ready=true
+            @emit "ready"
         for k,v of @clients
             @_reconnectClient k,true
 
     getClient:(master,role="master")=>
         clients=@clients[master]
-        if not clients or clients.length==0
-            return null
-        else
+        if clients and clients.length>0
             for client in clients
                 if client.getName()==master and client.getRole()==role
                     return client
 
-            return null
+        throw new Error("no client for role=#{role},name=#{master}")
 
     _disconnectClient:(master)=>
         logger=@logger
@@ -457,7 +477,7 @@ class RedisSentinelClient extends events.EventEmitter
         clients.forEach (client)->
             client.disconnect()
 
-    _reconnectClient:(master,checkOnly=false)=>
+    _reconnectClient:(master,checkOnly=false,cb)=>
         logger=@logger
         if checkOnly
             logger.debug "checkClient #{master}"
@@ -465,6 +485,7 @@ class RedisSentinelClient extends events.EventEmitter
             logger.info "_reconnectClient:#{master}"
         if @talkSentinelStatus!="connected"
             logger.warn "talkSentinel not connected,return "
+            if cb then cb "talkSentinel not connected"
             return
         talkSentinel=@talkSentinel
         clients=@clients[master]
@@ -520,6 +541,7 @@ class RedisSentinelClient extends events.EventEmitter
                                                 setTimeout fun,self.noMasterPartnerSentinelReconnectTime
                         catch e
                             logger.error "unable get master for #{masterName},reply=#{arr},err=#{e},#{e.stack}"
+
             else if role=="slave"
                 talkSentinel.send_command "SENTINEL",["slaves",masterName],(err,arr)->
                     if err

@@ -1,13 +1,11 @@
-RedisSentinelClient = require "./redis-sentinel-client"
+RedisSentinelClient = require "./index"
 options=
     clients:[
-        {role:"master",name:"mymaster"},
-        {role:"slave",name:"mymaster"}
+        {role:"master",name:"mymaster"}
     ]
     sentinels:[
-        {host:"10.2.126.53",port:"26379"},
-        {host:"10.2.126.53",port:"26389"},
-        {host:"10.2.126.53",port:"26399"}
+        {host:"10.2.124.206",port:"26379"},
+        {host:"10.2.124.204",port:"26389"}
     ]
     logger:console
     talkSentinelPingTime:2000
@@ -30,8 +28,8 @@ ping=(err)->
     else
         console.info "ping success"
 
-c.on "firstconnect",()->
-    console.log "firstconnect---------------"
+client.on "ready",()->
+    console.log "ready---------------"
     lua="local arr=redis.call('zrange',KEYS[1],0,999999); 
          for i,v in ipairs(arr) do  redis.call('zadd',KEYS[1],-0.0000001/i,v) end;
          return nil;"
@@ -40,30 +38,6 @@ c.on "firstconnect",()->
             console.error err
         else
             console.log "lua success"
-
-c.on "connecting",()->
-    console.log "connecting---------------"
-c.on "reconnect",()->
-    console.log "reconnect---------------"
-c.on "connect",()->
-    console.log "connect---------------"
-
-
-
-ping()
-s=client.getClient "mymaster","slave"
-s.subscribe "a","c","d"
-s.subscribe "b"
-s.unsubscribe "b","d"
-s.psubscribe "b*f"
-s.on "message",(channel,msg)->
-    console.log "message:#{channel},#{msg}"
-s.on "pmessage",(channel,msg)->
-    console.log "pmessage:#{channel},#{msg}"
-
-
-
-
 
 
 
